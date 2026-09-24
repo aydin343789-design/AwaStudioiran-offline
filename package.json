@@ -1,0 +1,18 @@
+{
+  "name": "avaye-iran-azad",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Professional Persian text-to-speech studio with secure server-side AI voice gateway and offline Android TTS.",
+  "scripts": {
+    "build": "echo \"Static Capacitor app - no web build step required\"",
+    "sync": "npx cap sync android",
+    "android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2"
+  }
+}

@@ -1,0 +1,8 @@
+name = "avaye-iran-azad-gateway"
+main = "worker.js"
+compatibility_date = "2026-09-24"
+
+[observability]
+enabled = true
+
+# ELEVENLABS_API_KEY را به عنوان Secret تنظیم کنید؛ این مقدار را داخل این فایل ننویسید.
