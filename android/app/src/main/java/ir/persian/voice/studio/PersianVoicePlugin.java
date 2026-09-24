@@ -59,8 +59,8 @@ public class PersianVoicePlugin extends Plugin {
     @PluginMethod
     public void synthesizeOffline(PluginCall call) {
         String text = call.getString("text", "");
-        float rate = (float)call.getDouble("rate", 1.0);
-        float pitch = (float)call.getDouble("pitch", 1.0);
+        float rate = (float)(double)call.getDouble("rate", 1.0);
+        float pitch = (float)(double)call.getDouble("pitch", 1.0);
         if (text.isEmpty()) { call.reject("متن خالی است."); return; }
         if (tts == null) { call.reject("موتور TTS آماده نیست."); return; }
 
