@@ -1,13 +1,20 @@
 # Changelog
 
-## 1.3.0
-- حذف API Key از رابط کاربر و APK
-- اضافه شدن Gateway امن Cloudflare Worker
-- انتقال تولید آنلاین و Voice Library به Gateway
-- اضافه شدن saveBase64Audio برای ذخیره خروجی Gateway در کش Android
-- اضافه شدن تنظیم URL Gateway در برنامه
-- اضافه شدن مستندات امنیتی و راه‌اندازی سرور
+## 1.4.0
+- جایگزینی سرویس تجاری ElevenLabs با Piper متن‌باز در مسیر online.
+- افزودن API خودمیزبان Piper Python/FastAPI همراه Docker و توکن backend.
+- افزودن TTS محلی Piper WebAssembly؛ runtime و مدل فقط در اولین آماده‌سازی دانلود و ذخیره می‌شوند.
+- حذف وابستگی عملی به Android system TTS؛ پلاگین native فقط برای ذخیره و اشتراک فایل باقی می‌ماند.
+- افزودن build با Vite و به‌روزرسانی workflow برای build وب، Capacitor و APK.
+- مستندسازی هزینهٔ میزبانی، محدودیت مدل/صدا و اعلان‌های مجوز.
 
+## 1.3.0
+- حذف API Key از رابط کاربر و APK.
+- اضافه شدن Gateway امن Cloudflare Worker.
+- انتقال تولید آنلاین و Voice Library به Gateway.
+- اضافه شدن saveBase64Audio برای ذخیره خروجی Gateway در کش Android.
+- اضافه شدن تنظیم URL Gateway در برنامه.
+- اضافه شدن مستندات امنیتی و راه‌اندازی سرور.
 
 ## 1.2.0
 - Added professional presets: narration, news, podcast, advertising, cinematic and storytelling.

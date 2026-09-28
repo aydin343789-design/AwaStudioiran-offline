@@ -5,4 +5,4 @@ compatibility_date = "2026-09-24"
 [observability]
 enabled = true
 
-# ELEVENLABS_API_KEY را به عنوان Secret تنظیم کنید؛ این مقدار را داخل این فایل ننویسید.
+# Define PIPER_API_URL and PIPER_API_TOKEN as Worker variables/secrets.

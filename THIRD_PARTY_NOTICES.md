@@ -1,0 +1,15 @@
+# Third-party notices
+
+این پروژه به چند جزء با مجوزهای مستقل وابسته است. برای انتشار نسخهٔ تجاری یا بازتوزیع فایل‌ها، متن مجوز و شرایط جاری هر پروژه را دوباره بررسی کنید.
+
+| جزء | کاربرد | مجوز | منبع |
+|---|---|---|---|
+| `@mintplex-labs/piper-tts-web` | رابط Piper در مرورگر | MIT | [npm](https://www.npmjs.com/package/@mintplex-labs/piper-tts-web) |
+| `@diffusionstudio/piper-wasm` | runtime WebAssembly Piper | MIT | [npm](https://www.npmjs.com/package/@diffusionstudio/piper-wasm) |
+| `onnxruntime-web` | اجرای مدل ONNX با WebAssembly | MIT | [npm](https://www.npmjs.com/package/onnxruntime-web) · [مستند deployment](https://onnxruntime.ai/docs/tutorials/web/deploy.html) |
+| Piper Python (`piper-tts`) | API آنلاین اختیاری | GPL-3.0 | [مخزن upstream](https://github.com/OHF-Voice/piper1-gpl) |
+| صدای `fa_IR-amir-medium` | وزن مدل فارسی | MIT در model repo | [فایل‌های مدل](https://huggingface.co/rhasspy/piper-voices/tree/main/fa/fa_IR/amir/medium) · [mirror مرورگری](https://huggingface.co/diffusionstudio/piper-voices/tree/main/fa/fa_IR/amir/medium) |
+
+مدل صوتی از مجوز runtime جداست. کارت مدل Piper برای صدای Amir مجموعه‌داده را CC0 معرفی می‌کند؛ پیش از عرضهٔ تجاری یا انتشار مدل تغییریافته، model card و مجوزهای جاریِ هم فایل مدل و هم داده را بررسی کنید.
+
+در APK وزن ONNX و runtime WASM بسته‌بندی نمی‌شوند؛ حالت محلی آن‌ها را در اجرای اول دریافت می‌کند. backend Python در Android تعبیه نشده و سرویس اختیاری جداگانه‌ای است؛ شخصی که container آن را بازتوزیع می‌کند باید تکالیف GPL-3.0 را رعایت کند.
