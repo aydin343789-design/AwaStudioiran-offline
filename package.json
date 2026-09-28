@@ -1,14 +1,15 @@
 {
   "name": "avaye-iran-azad",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
-  "description": "Persian TTS studio with local Piper WebAssembly and a self-hosted open-source Piper API.",
+  "description": "Offline Persian TTS studio with local Piper WebAssembly, tempo presets, and MP3 export.",
   "scripts": {
     "build": "node scripts/build-web.mjs",
     "sync": "npm run build && npx cap sync android",
     "android": "npx cap open android"
   },
   "dependencies": {
+    "@breezystack/lamejs": "1.2.7",
     "@capacitor/android": "8.5.2",
     "@capacitor/core": "8.5.2",
     "@mintplex-labs/piper-tts-web": "1.0.5",

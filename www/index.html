@@ -2,65 +2,153 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-  <meta name="theme-color" content="#0b0f19">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090f1c">
+  <meta name="color-scheme" content="dark">
   <title>آوای ایران آزاد</title>
+  <link rel="preload" as="image" href="assets/app-logo-header.webp">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div><div class="eyebrow">IRAN FREE VOICE</div><h1>آوای ایران آزاد</h1></div>
-      <button id="themeBtn" class="icon-btn" aria-label="تغییر پوسته">☼</button>
+      <div class="brand">
+        <img class="brand-logo" src="assets/app-logo-header.webp" alt="">
+        <div class="brand-copy">
+          <span class="eyebrow">IRAN FREE VOICE</span>
+          <h1>آوای ایران آزاد</h1>
+        </div>
+      </div>
+      <span class="brand-mark" aria-hidden="true">✦</span>
     </header>
-    <main>
-      <section class="hero-card"><div class="hero-orb"></div><div class="hero-content"><span class="status-dot"></span><span id="engineStatus">آماده تولید صدا</span><h2>متن را بده، صدا را بساز.</h2><p>تبدیل متن فارسی با مدل متن‌باز Piper؛ آنلاین از سرور خودتان یا محلی روی گوشی.</p></div></section>
 
-      <section class="panel">
-        <div class="section-head"><h3>متن</h3><button id="clearText" class="text-btn">پاک کردن</button></div>
-        <textarea id="textInput" maxlength="12000" placeholder="متن فارسی خود را اینجا بنویس..."></textarea>
-        <div class="text-meta"><span id="charCount">۰</span> کاراکتر · <span id="wordCount">۰</span> واژه · حدود <span id="timeEstimate">۰</span> ثانیه</div>
-      </section>
+    <div class="menu-row">
+      <button id="menuBtn" class="menu-trigger" type="button" aria-label="بازکردن منو" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <span>منو</span>
+      </button>
+      <div class="engine-indicator"><span class="status-dot"></span><span id="engineStatus">آفلاین</span></div>
+    </div>
 
-      <section class="panel">
-        <div class="section-head"><h3>موتور صدا</h3><div class="segmented"><button data-engine="online" class="seg">آنلاین · سرور Piper</button><button data-engine="offline" class="seg">محلی · آفلاین</button></div></div>
-        <div id="onlineControls" class="engine-controls hidden">
-          <div class="offline-note"><strong>مدل متن‌باز Piper</strong><span>مدل و API برای هر کاراکتر هزینه‌ای ندارند؛ اما هزینهٔ میزبانی و ترافیک سرور بر عهدهٔ شماست و آدرس آنلاین لازم است.</span></div>
-          <div class="voice-info">گوینده: امیر · فارسی ایران · کیفیت medium</div>
-          <label class="field"><span>سرعت</span><input id="speed" type="range" min="0.7" max="1.2" step="0.05" value="1"><b id="speedVal">۱×</b></label>
+    <main class="content">
+      <section class="section-block" aria-labelledby="voiceHeading">
+        <div class="section-heading">
+          <div><span class="section-kicker">01 / گوینده</span><h2 id="voiceHeading">شخصیت صدا</h2></div>
+          <span class="section-rule"></span>
         </div>
-        <div id="offlineControls" class="engine-controls hidden">
-          <div class="offline-note"><strong>مدل محلی Piper</strong><span>پس از دریافت runtime و مدل، ساخت صدا روی خود گوشی و بدون نیاز به موتور گفتار Android انجام می‌شود.</span></div>
-          <button id="prepareOfflineBtn" class="action-btn download-btn">دانلود/آماده‌سازی مدل فارسی · حدود ۹۰ مگابایت بار اول</button>
-          <div id="offlineStatus" class="offline-status" aria-live="polite">بررسی فضای مدل محلی...</div>
+        <div class="voice-grid" role="group" aria-label="انتخاب شخصیت صدا">
+          <button class="voice-card unavailable" type="button" disabled aria-label="صدای زن، به‌زودی">
+            <span class="voice-photo"><img src="assets/voice-woman.webp" alt="آواتار زن"></span>
+            <span class="voice-name">زن</span>
+            <span class="voice-caption">به‌زودی</span>
+          </button>
+          <button class="voice-card active" id="voiceMan" type="button" aria-pressed="true" aria-label="مدل مردانهٔ امیر، فعال">
+            <span class="voice-photo"><img src="assets/voice-man.webp" alt="آواتار مرد"></span>
+            <span class="voice-name">مرد</span>
+            <span class="voice-caption">امیر · فعال</span>
+            <span class="selected-mark" aria-hidden="true">✓</span>
+          </button>
+          <button class="voice-card unavailable" type="button" disabled aria-label="صدای کودک، به‌زودی">
+            <span class="voice-photo"><img src="assets/voice-child.webp" alt="آواتار کودک"></span>
+            <span class="voice-name">کودک</span>
+            <span class="voice-caption">به‌زودی</span>
+          </button>
         </div>
       </section>
 
-      <button id="generateBtn" class="generate-btn"><span class="generate-icon">✦</span><span id="generateLabel">تولید صدای فارسی</span></button>
-
-      <section id="playerPanel" class="panel player hidden">
-        <div class="section-head"><h3>خروجی آماده است</h3><span id="audioType" class="badge">WAV</span></div>
-        <div class="wave-wrap"><canvas id="waveCanvas" height="72"></canvas></div>
-        <audio id="audioPlayer" controls></audio>
-        <div class="player-actions"><button id="saveBtn" class="action-btn">ذخیره</button><button id="shareBtn" class="action-btn">اشتراک‌گذاری</button><button id="newBtn" class="action-btn">متن جدید</button></div>
+      <section class="section-block tone-section" aria-labelledby="toneHeading">
+        <div class="section-heading compact-heading">
+          <div><span class="section-kicker">02 / حالت گفتار</span><h2 id="toneHeading">انتخاب لحن</h2></div>
+        </div>
+        <div class="tone-grid" role="group" aria-label="انتخاب لحن">
+          <button class="tone-chip active" type="button" data-tone="normal" aria-pressed="true">عادی</button>
+          <button class="tone-chip" type="button" data-tone="formal" aria-pressed="false">رسمی</button>
+          <button class="tone-chip" type="button" data-tone="news" aria-pressed="false">خبری</button>
+          <button class="tone-chip" type="button" data-tone="cheerful" aria-pressed="false">شاد</button>
+          <button class="tone-chip" type="button" data-tone="intimate" aria-pressed="false">صمیمی</button>
+        </div>
       </section>
 
-      <section class="panel history">
-        <div class="section-head"><h3>تاریخچه</h3><button id="clearHistory" class="text-btn">حذف همه</button></div>
-        <div id="historyList" class="history-list"></div>
+      <section class="editor-card" aria-labelledby="textHeading">
+        <div class="editor-heading">
+          <div><span class="section-kicker">03 / متن</span><h2 id="textHeading">متن خود را بنویسید</h2></div>
+          <button id="clearText" class="clear-btn" type="button">پاک‌کردن</button>
+        </div>
+        <textarea id="textInput" maxlength="3000" placeholder="متن فارسی را اینجا وارد کنید…" aria-label="متن فارسی برای تبدیل به گفتار"></textarea>
+        <div class="editor-footer">
+          <span><b id="charCount">۰</b><span class="counter-divider">/</span>۳۰۰۰ نویسه</span>
+          <span><b id="wordCount">۰</b> واژه</span>
+        </div>
+      </section>
+
+      <div class="model-row">
+        <span class="model-label"><span class="model-pulse"></span><span id="modelStatus">آفلاین · مدل بررسی می‌شود</span></span>
+        <button id="prepareOfflineBtn" class="model-action hidden" type="button">دریافت مدل</button>
+      </div>
+
+      <button id="generateBtn" class="generate-btn" type="button">
+        <span class="generate-symbol" aria-hidden="true">✦</span>
+        <span id="generateLabel">تبدیل به گفتار</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5"/></svg>
+      </button>
+
+      <section id="playerPanel" class="player-card hidden" aria-labelledby="playerHeading">
+        <div class="player-heading">
+          <div><span class="section-kicker">خروجی آماده</span><h2 id="playerHeading">فایل صوتی</h2></div>
+          <span class="format-badge">MP3</span>
+        </div>
+        <div class="player-meta"><span id="outputMeta">امیر · عادی</span><span id="outputDuration"></span></div>
+        <audio id="audioPlayer" controls preload="metadata" aria-label="پخش فایل صوتی"></audio>
+        <div class="player-actions">
+          <button id="downloadBtn" class="secondary-action" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 18v3h16v-3"/></svg>
+            دانلود MP3
+          </button>
+          <button id="saveBtn" class="save-action" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l3 3v13H4V4h1zm2 0v6h10V4M8 20v-7h8v7"/></svg>
+            ذخیره در گوشی
+          </button>
+        </div>
       </section>
     </main>
-    <nav class="bottom-nav"><button class="nav-item active">🎙<span>استودیو</span></button><button id="settingsBtn" class="nav-item">⚙<span>تنظیمات</span></button></nav>
   </div>
 
-  <div id="settingsModal" class="modal hidden"><div class="modal-card">
-    <div class="modal-head"><h3>تنظیمات</h3><button id="closeSettings" class="icon-btn">×</button></div>
-    <label class="field"><span>آدرس Cloudflare Worker</span><input id="gatewayUrl" type="url" autocomplete="off" placeholder="https://your-worker.workers.dev"></label>
-    <div class="settings-grid"><button id="testOnlineBtn" class="action-btn">آزمون API آنلاین</button><button id="checkOfflineBtn" class="action-btn">بررسی مدل محلی</button></div>
-    <p class="security-note">کلید اتصال Piper فقط بین Worker و سرور خودتان نگهداری می‌شود و داخل APK قرار نمی‌گیرد. برای ساخت آنلاین باید API Piper را روی سروری قابل‌دسترسی اجرا کنید.</p>
-    <button id="saveSettings" class="generate-btn small">ذخیره تنظیمات</button>
-  </div></div>
-  <div id="toast" class="toast"></div>
+  <div id="drawerScrim" class="scrim hidden"></div>
+  <aside id="drawer" class="drawer" aria-label="منوی اصلی" aria-hidden="true">
+    <div class="drawer-header">
+      <div class="drawer-brand"><img src="assets/app-logo-header.webp" alt=""><span>آوای ایران آزاد</span></div>
+      <button id="closeDrawer" class="icon-button" type="button" aria-label="بستن منو">×</button>
+    </div>
+    <button id="historyAction" class="drawer-item" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7v5h5M5 12a7 7 0 1 0 2-5M12 8v5l3 2"/></svg><span>تاریخچه فایل‌ها</span><span class="drawer-chevron">‹</span>
+    </button>
+    <button id="settingsAction" class="drawer-item" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0-5v2m0 14v2m9-9h-2M5 12H3m15.36-6.36-1.42 1.42M7.06 16.94l-1.42 1.42m12.72 0-1.42-1.42M7.06 7.06 5.64 5.64"/></svg><span>تنظیمات</span><span class="drawer-chevron">‹</span>
+    </button>
+    <div class="drawer-footer"><span class="footer-line"></span><span>نسخهٔ آفلاین</span></div>
+  </aside>
+
+  <div id="settingsModal" class="sheet-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settingsHeading">
+    <section class="sheet-card">
+      <div class="sheet-handle"></div>
+      <div class="sheet-heading"><div><span class="section-kicker">تنظیمات</span><h2 id="settingsHeading">اتصال و پردازش</h2></div><button id="closeSettings" class="icon-button" type="button" aria-label="بستن">×</button></div>
+      <label class="field-label" for="gatewayUrl">آدرس سرور آنلاین</label>
+      <input id="gatewayUrl" class="text-field" type="url" inputmode="url" autocomplete="url" placeholder="https://your-server.example">
+      <label class="online-toggle" for="onlineToggle"><span><b>استفاده از سرور آنلاین</b></span><input id="onlineToggle" type="checkbox"><span class="toggle-track" aria-hidden="true"></span></label>
+      <div class="sheet-actions"><button id="testOnlineBtn" class="secondary-action" type="button">آزمون اتصال</button><button id="saveSettings" class="save-action" type="button">ذخیره تنظیمات</button></div>
+    </section>
+  </div>
+
+  <div id="historyModal" class="sheet-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="historyHeading">
+    <section class="sheet-card history-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-heading"><div><span class="section-kicker">فایل‌های شما</span><h2 id="historyHeading">تاریخچه</h2></div><button id="closeHistory" class="icon-button" type="button" aria-label="بستن">×</button></div>
+      <div id="historyList" class="history-list"></div>
+      <button id="clearHistory" class="clear-history" type="button">پاک‌کردن تاریخچه</button>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>

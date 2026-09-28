@@ -1,12 +1,21 @@
 import { modelIsDownloaded, preparePersianVoice, synthesizePersian, PERSIAN_VOICE_ID } from "./piper-engine.js";
+import { wavBlobToMp3 } from "./mp3-encoder.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
+const MAX_CHARS = 3000;
+const toneProfiles = {
+  normal: { label: "عادی", speed: 1.00 },
+  formal: { label: "رسمی", speed: 0.94 },
+  news: { label: "خبری", speed: 1.07 },
+  cheerful: { label: "شاد", speed: 1.08 },
+  intimate: { label: "صمیمی", speed: 0.96 }
+};
 const state = {
-  engine: localStorage.getItem("engine") || "offline",
+  engine: localStorage.getItem("engine") === "online" ? "online" : "offline",
+  tone: "normal",
   audioPath: null,
   audioUrl: null,
-  voices: [],
   preparing: false
 };
 const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
@@ -20,7 +29,7 @@ function gatewayUrl() {
 async function loadPronunciationMap() {
   try {
     const response = await fetch("data/pronunciation-fa.json");
-    pronunciationMap = await response.json();
+    if (response.ok) pronunciationMap = await response.json();
   } catch (_) {}
 }
 
@@ -44,19 +53,11 @@ function toast(message) {
   element.textContent = message;
   element.classList.add("show");
   clearTimeout(window.__toast);
-  window.__toast = setTimeout(() => element.classList.remove("show"), 4000);
-}
-
-function setBusy(busy, label = "در حال تولید...") {
-  $("#generateBtn").disabled = busy;
-  $("#generateLabel").textContent = busy ? label : "تولید صدای فارسی";
-  $("#engineStatus").textContent = busy ? "در حال پردازش صدا..." : "آماده تولید صدا";
+  window.__toast = setTimeout(() => element.classList.remove("show"), 3600);
 }
 
 function nativePlugin() {
-  const plugin = window.Capacitor?.Plugins?.PersianVoice;
-  if (!plugin) throw new Error("پلاگین Android در دسترس نیست. APK را از workflow جدید GitHub بسازید.");
-  return plugin;
+  return window.Capacitor?.Plugins?.PersianVoice || null;
 }
 
 function blobToBase64(blob) {
@@ -69,118 +70,54 @@ function blobToBase64(blob) {
 }
 
 async function saveBlobToAppCache(blob) {
-  const plugin = window.Capacitor?.Plugins?.PersianVoice;
-  if (!plugin) {
-    const path = URL.createObjectURL(blob);
-    return { path, name: `voice_${Date.now()}.wav` };
-  }
+  const plugin = nativePlugin();
+  const extension = blob.type === "audio/mpeg" ? "mp3" : "wav";
+  if (!plugin) return { path: URL.createObjectURL(blob), name: `voice_${Date.now()}.${extension}` };
   const base64 = await blobToBase64(blob);
-  return plugin.saveBase64Audio({ base64, mime: "audio/wav", extension: "wav" });
+  return plugin.saveBase64Audio({ base64, mime: blob.type || "audio/mpeg", extension });
+}
+
+function setEngineStatus(text) {
+  $("#modelStatus").textContent = text;
 }
 
 function updateOfflineProgress(progress) {
-  const status = $("#offlineStatus");
-  if (!status) return;
   if (progress.phase === "ready") {
-    status.textContent = "مدل آماده است؛ پس از این مرحله بدون اینترنت کار می‌کند.";
-    return;
-  }
-  if (progress.cached) {
-    status.textContent = `${progress.asset}: از حافظهٔ گوشی بارگذاری شد.`;
+    setEngineStatus("مدل آفلاین آماده");
+    $("#prepareOfflineBtn").classList.add("hidden");
     return;
   }
   const loaded = Number(progress.loaded) || 0;
   const total = Number(progress.total) || 0;
-  const mb = (loaded / (1024 * 1024)).toFixed(1).replace(".", "٫");
-  if (total > 0) {
+  const name = progress.asset || "مدل فارسی";
+  if (progress.cached) {
+    setEngineStatus("در حال آماده‌سازی آفلاین");
+  } else if (total > 0) {
     const percent = Math.min(100, Math.floor((loaded / total) * 100));
-    status.textContent = `دریافت ${progress.asset || "فایل"}: ${toFaNumber(percent)}٪ · ${toFaNumber(mb)} مگابایت`;
-  } else {
-    status.textContent = `آماده‌سازی ${progress.asset || "مدل"}...`;
+    setEngineStatus(`دریافت ${name} · ${toFaNumber(percent)}٪`);
+  } else if (progress.phase === "model") {
+    setEngineStatus("آماده‌سازی مدل فارسی…");
   }
 }
 
 async function onlineGenerate(text) {
   const base = gatewayUrl();
-  if (!base) throw new Error("آدرس Cloudflare Worker را در تنظیمات وارد کنید.");
+  if (!base) throw new Error("ابتدا آدرس سرور را در تنظیمات وارد کنید.");
   const response = await fetch(`${base}/v1/tts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voiceId: PERSIAN_VOICE_ID, speed: Number($("#speed").value) })
+    body: JSON.stringify({ text, voiceId: PERSIAN_VOICE_ID, speed: 1 })
   });
   if (!response.ok) {
-    let message = "تولید آنلاین ناموفق بود.";
-    try {
-      const body = await response.json();
-      message = body.error || body.detail || message;
-    } catch (_) {}
+    let message = "تولید صدا ناموفق بود.";
+    try { const body = await response.json(); message = body.error || body.detail || message; } catch (_) {}
     throw new Error(message);
   }
-  const blob = await response.blob();
-  const saved = await saveBlobToAppCache(blob);
-  return { ...saved, mime: "audio/wav" };
+  return response.blob();
 }
 
 async function offlineGenerate(text) {
-  const blob = await synthesizePersian(text, updateOfflineProgress);
-  const saved = await saveBlobToAppCache(blob);
-  return { ...saved, mime: "audio/wav" };
-}
-
-async function playPath(path) {
-  const url = path.startsWith("blob:") ? path : window.Capacitor.convertFileSrc(path);
-  $("#audioPlayer").src = url;
-  $("#audioPlayer").load();
-  state.audioPath = path;
-  state.audioUrl = url;
-  $("#playerPanel").classList.remove("hidden");
-  drawWave();
-  $("#audioPlayer").play().catch(() => {});
-}
-
-function drawWave() {
-  const canvas = $("#waveCanvas");
-  const ctx = canvas.getContext("2d");
-  const width = canvas.clientWidth || 600;
-  const height = 72;
-  const scale = devicePixelRatio || 1;
-  canvas.width = width * scale;
-  canvas.height = height * scale;
-  ctx.scale(scale, scale);
-  ctx.clearRect(0, 0, width, height);
-  const middle = height / 2;
-  for (let i = 0; i < width; i += 5) {
-    const amplitude = 8 + Math.abs(Math.sin(i * 0.09)) * 24 + Math.abs(Math.sin(i * 0.023)) * 10;
-    ctx.fillStyle = i % 10 === 0 ? "#8c76ff" : "#4fbdab";
-    ctx.fillRect(i, middle - amplitude / 2, 3, amplitude);
-  }
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-  })[char]);
-}
-
-function addHistory(item) {
-  const history = JSON.parse(localStorage.getItem("voice_history") || "[]");
-  history.unshift(item);
-  localStorage.setItem("voice_history", JSON.stringify(history.slice(0, 20)));
-  renderHistory();
-}
-
-function renderHistory() {
-  const list = $("#historyList");
-  const history = JSON.parse(localStorage.getItem("voice_history") || "[]");
-  if (!history.length) {
-    list.innerHTML = '<div class="history-item"><span>هنوز خروجی‌ای ساخته نشده است.</span></div>';
-    return;
-  }
-  list.innerHTML = history.map((item, index) => `<div class="history-item"><span>${escapeHtml(item.text.slice(0, 70))}</span><button data-history="${index}">باز کردن</button></div>`).join("");
-  $$('[data-history]').forEach((button) => button.onclick = async () => {
-    const item = history[Number(button.dataset.history)];
-    if (item.path) await playPath(item.path);
-  });
+  return synthesizePersian(text, updateOfflineProgress);
 }
 
 function updateStats() {
@@ -188,21 +125,70 @@ function updateStats() {
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   $("#charCount").textContent = toFaNumber(text.length);
   $("#wordCount").textContent = toFaNumber(words);
-  $("#timeEstimate").textContent = toFaNumber(Math.max(0, Math.round(words / 2.4)));
+  $("#charCount").classList.toggle("over-limit", text.length > MAX_CHARS);
+}
+
+function fileName() {
+  const date = new Date();
+  const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  return `AvayeIranAzad_${stamp}_${Date.now().toString().slice(-6)}.mp3`;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
+}
+
+function renderHistory() {
+  const list = $("#historyList");
+  const history = JSON.parse(localStorage.getItem("voice_history") || "[]");
+  if (!history.length) {
+    list.innerHTML = '<div class="history-empty">هنوز فایلی ساخته نشده است.</div>';
+    return;
+  }
+  list.innerHTML = history.map((item, index) => {
+    const when = new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(item.time || Date.now());
+    return `<div class="history-item"><div class="history-info"><span class="history-text">${escapeHtml(item.text.slice(0, 88))}</span><span class="history-date">${when} · MP3 · ${escapeHtml(item.toneLabel || "عادی")}</span></div><button class="history-play" type="button" data-history-play="${index}">پخش</button></div>`;
+  }).join("");
+  $$('[data-history-play]').forEach((button) => {
+    button.onclick = async () => {
+      const item = history[Number(button.dataset.historyPlay)];
+      if (!item?.path) return toast("فایل ذخیره‌شده پیدا نشد.");
+      await playPath(item.path);
+      $("#outputMeta").textContent = `امیر · ${item.toneLabel || "عادی"}`;
+      $("#historyModal").classList.add("hidden");
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+    };
+  });
+}
+
+function playPath(path) {
+  const url = path.startsWith("blob:") ? path : (window.Capacitor?.convertFileSrc ? window.Capacitor.convertFileSrc(path) : path);
+  $("#audioPlayer").src = url;
+  $("#audioPlayer").load();
+  state.audioPath = path;
+  state.audioUrl = url;
+  $("#playerPanel").classList.remove("hidden");
+  return Promise.resolve();
+}
+
+function setBusy(busy, label = "در حال ساخت فایل…") {
+  $("#generateBtn").disabled = busy;
+  $("#generateLabel").textContent = busy ? label : "تبدیل به گفتار";
+  if (busy) $("#playerPanel").classList.add("hidden");
 }
 
 async function prepareOffline() {
   if (state.preparing) return;
   state.preparing = true;
   $("#prepareOfflineBtn").disabled = true;
-  $("#offlineStatus").textContent = "در حال آماده‌سازی runtime و مدل؛ بار اول اینترنت لازم است...";
+  setEngineStatus("در حال دریافت مدل…");
   try {
     await preparePersianVoice(updateOfflineProgress);
-    toast("مدل فارسی آماده است و از این پس آفلاین کار می‌کند.");
+    toast("مدل آفلاین آماده است.");
   } catch (error) {
     console.error(error);
-    $("#offlineStatus").textContent = error.message || "آماده‌سازی مدل ناموفق بود.";
-    toast(error.message || "دریافت مدل انجام نشد.");
+    setEngineStatus("مدل دریافت نشد");
+    toast(error.message || "دریافت مدل ناموفق بود.");
   } finally {
     state.preparing = false;
     $("#prepareOfflineBtn").disabled = false;
@@ -212,115 +198,170 @@ async function prepareOffline() {
 async function checkOffline() {
   try {
     const exists = await modelIsDownloaded();
-    $("#offlineStatus").textContent = exists
-      ? "مدل صدای فارسی روی گوشی موجود است؛ آمادهٔ استفادهٔ آفلاین."
-      : "هنوز دریافت نشده؛ بار اول حدود ۹۰ مگابایت اینترنت لازم است، سپس آفلاین می‌شود.";
+    $("#prepareOfflineBtn").classList.toggle("hidden", exists);
+    $("#engineStatus").textContent = state.engine === "online" ? "آنلاین" : "آفلاین";
+    if (state.engine === "offline") setEngineStatus(exists ? "مدل آفلاین آماده" : "مدل آفلاین دریافت نشده");
   } catch (error) {
-    $("#offlineStatus").textContent = error.message || "WebView با ذخیره‌سازی مدل سازگار نیست.";
+    $("#prepareOfflineBtn").classList.remove("hidden");
+    $("#engineStatus").textContent = state.engine === "online" ? "آنلاین" : "آفلاین";
+    if (state.engine === "offline") setEngineStatus("WebView را به‌روز کنید");
   }
 }
 
+function updateEngineUI() {
+  const online = state.engine === "online";
+  $("#onlineToggle").checked = online;
+  $("#engineStatus").textContent = online ? "آنلاین" : "آفلاین";
+  if (online) {
+    $("#modelStatus").textContent = "پردازش آنلاین";
+    $("#prepareOfflineBtn").classList.add("hidden");
+  }
+  else checkOffline();
+}
+
 async function generate() {
-  let text = $("#textInput").value.trim();
-  if (!text) return toast("ابتدا متن را وارد کنید.");
-  text = normalizePersian(text);
-  setBusy(true, state.engine === "online" ? "در حال ساخت صدا روی سرور..." : "در حال آماده‌سازی صدای محلی...");
+  const raw = $("#textInput").value;
+  if (!raw.trim()) return toast("متن را وارد کنید.");
+  if (raw.length > MAX_CHARS) return toast("حداکثر ۳۰۰۰ نویسه مجاز است.");
+  const text = normalizePersian(raw);
+  const tone = toneProfiles[state.tone] || toneProfiles.normal;
+  setBusy(true, state.engine === "online" ? "در حال دریافت صدا…" : "در حال ساخت صدای آفلاین…");
   try {
-    const result = state.engine === "online" ? await onlineGenerate(text) : await offlineGenerate(text);
-    await playPath(result.path);
-    $("#audioType").textContent = "WAV";
-    addHistory({ text: $("#textInput").value, path: result.path, name: result.name, time: Date.now(), engine: state.engine });
-    toast("صدا با موفقیت ساخته شد.");
+    const wav = state.engine === "online" ? await onlineGenerate(text) : await offlineGenerate(text);
+    let mp3 = wav;
+    if (!wav.type.includes("mpeg")) {
+      $("#generateLabel").textContent = "در حال آماده‌سازی MP3…";
+      mp3 = await wavBlobToMp3(wav, { speed: tone.speed, onProgress: (percent) => {
+        if (percent < 100) $("#generateLabel").textContent = `ساخت MP3 · ${toFaNumber(percent)}٪`;
+      }});
+    }
+    const saved = await saveBlobToAppCache(mp3);
+    await playPath(saved.path);
+    $("#outputMeta").textContent = `امیر · ${tone.label}${Math.abs(tone.speed - 1) > .001 ? ` · ریتم ${tone.speed > 1 ? "تندتر" : "آرام‌تر"}` : ""}`;
+    $("#outputDuration").textContent = "";
+    const history = JSON.parse(localStorage.getItem("voice_history") || "[]");
+    history.unshift({ text: raw, path: saved.path, name: saved.name || fileName(), time: Date.now(), tone: state.tone, toneLabel: tone.label, engine: state.engine });
+    localStorage.setItem("voice_history", JSON.stringify(history.slice(0, 30)));
+    toast("فایل MP3 آمادهٔ پخش است.");
+    setTimeout(() => $("#playerPanel").scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
   } catch (error) {
     console.error(error);
-    toast(error.message || "تولید صدا انجام نشد.");
+    toast(error.message || "تبدیل صدا انجام نشد.");
   } finally {
     setBusy(false);
   }
 }
 
+async function saveAudio(directory) {
+  if (!state.audioPath) return;
+  const name = fileName();
+  const plugin = nativePlugin();
+  if (plugin && !state.audioPath.startsWith("blob:")) {
+    try {
+      await plugin.saveToDownloads({ path: state.audioPath, fileName: name, directory });
+      toast(directory === "downloads" ? "فایل در پوشهٔ دانلود ذخیره شد." : "فایل در پوشهٔ موسیقی ذخیره شد.");
+    } catch (error) { toast(error.message || "ذخیرهٔ فایل ناموفق بود."); }
+    return;
+  }
+  try {
+    const blob = state.audioPath.startsWith("blob:") ? await (await fetch(state.audioPath)).blob() : await (await fetch(state.audioUrl)).blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { toast(error.message || "دانلود فایل ناموفق بود."); }
+}
+
 async function testOnline() {
   const base = gatewayUrl();
-  if (!base) return toast("آدرس Cloudflare Worker را وارد کنید.");
+  if (!base) return toast("آدرس سرور آنلاین را وارد کنید.");
   try {
     const response = await fetch(`${base}/health`);
     const result = await response.json();
-    if (!response.ok || result.status !== "ok") throw new Error(result.error || "API آنلاین آماده نیست.");
-    toast("اتصال به API متن‌باز Piper موفق بود.");
-  } catch (error) {
-    toast(error.message || "اتصال آنلاین ناموفق بود.");
-  }
+    if (!response.ok || result.status !== "ok") throw new Error(result.error || "سرور آماده نیست.");
+    toast("اتصال سرور موفق بود.");
+  } catch (error) { toast(error.message || "اتصال برقرار نشد."); }
 }
 
-function applyEngine(engine) {
-  state.engine = engine;
-  localStorage.setItem("engine", engine);
-  $$(".seg").forEach((button) => button.classList.toggle("active", button.dataset.engine === engine));
-  $("#onlineControls").classList.toggle("hidden", engine !== "online");
-  $("#offlineControls").classList.toggle("hidden", engine !== "offline");
-  if (engine === "offline") checkOffline();
+function closeDrawer() {
+  $("#drawer").classList.remove("open");
+  $("#drawer").setAttribute("aria-hidden", "true");
+  $("#menuBtn").setAttribute("aria-expanded", "false");
+  $("#drawerScrim").classList.add("hidden");
 }
 
-$("#textInput").oninput = updateStats;
-$("#clearText").onclick = () => { $("#textInput").value = ""; updateStats(); };
+function openDrawer() {
+  $("#drawer").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden", "false");
+  $("#menuBtn").setAttribute("aria-expanded", "true");
+  $("#drawerScrim").classList.remove("hidden");
+}
+
+$("#textInput").addEventListener("input", updateStats);
+$("#clearText").onclick = () => { $("#textInput").value = ""; updateStats(); $("#textInput").focus(); };
 $("#generateBtn").onclick = generate;
 $("#prepareOfflineBtn").onclick = prepareOffline;
-$("#themeBtn").onclick = () => {
-  document.body.classList.toggle("light");
-  localStorage.setItem("light", document.body.classList.contains("light"));
+$("#menuBtn").onclick = openDrawer;
+$("#closeDrawer").onclick = closeDrawer;
+$("#drawerScrim").onclick = closeDrawer;
+$("#historyAction").onclick = () => { closeDrawer(); renderHistory(); $("#historyModal").classList.remove("hidden"); };
+$("#settingsAction").onclick = () => {
+  closeDrawer();
+  $("#gatewayUrl").value = gatewayUrl();
+  $("#onlineToggle").checked = state.engine === "online";
+  $("#settingsModal").classList.remove("hidden");
 };
-$("#newBtn").onclick = () => {
-  $("#textInput").value = "";
-  $("#playerPanel").classList.add("hidden");
-  updateStats();
-  $("#textInput").focus();
-};
-$("#clearHistory").onclick = () => { localStorage.removeItem("voice_history"); renderHistory(); toast("تاریخچه پاک شد."); };
-$("#settingsBtn").onclick = () => { $("#gatewayUrl").value = gatewayUrl(); $("#settingsModal").classList.remove("hidden"); };
 $("#closeSettings").onclick = () => $("#settingsModal").classList.add("hidden");
+$("#closeHistory").onclick = () => $("#historyModal").classList.add("hidden");
+$("#settingsModal").onclick = (event) => { if (event.target === $("#settingsModal")) $("#settingsModal").classList.add("hidden"); };
+$("#historyModal").onclick = (event) => { if (event.target === $("#historyModal")) $("#historyModal").classList.add("hidden"); };
 $("#saveSettings").onclick = () => {
   const value = $("#gatewayUrl").value.trim().replace(/\/$/, "");
-  if (value) localStorage.setItem("tts_gateway_url", value);
-  else localStorage.removeItem("tts_gateway_url");
+  if (value) {
+    try { if (!["http:", "https:"].includes(new URL(value).protocol)) throw new Error(); }
+    catch (_) { return toast("آدرس سرور معتبر نیست."); }
+    localStorage.setItem("tts_gateway_url", value);
+  } else localStorage.removeItem("tts_gateway_url");
+  if ($("#onlineToggle").checked && !value) return toast("برای حالت آنلاین آدرس سرور لازم است.");
+  state.engine = $("#onlineToggle").checked ? "online" : "offline";
+  localStorage.setItem("engine", state.engine);
   $("#settingsModal").classList.add("hidden");
+  updateEngineUI();
   toast("تنظیمات ذخیره شد.");
 };
 $("#testOnlineBtn").onclick = testOnline;
-$("#checkOfflineBtn").onclick = checkOffline;
-$$(".seg").forEach((button) => button.onclick = () => applyEngine(button.dataset.engine));
-$("#speed").oninput = () => $("#speedVal").textContent = `${$("#speed").value.replace(".", "٫")}×`;
-$("#saveBtn").onclick = async () => {
-  if (!state.audioPath) return;
-  if (state.audioPath.startsWith("blob:")) {
-    const link = document.createElement("a");
-    link.href = state.audioPath;
-    link.download = `AvayeIranAzad_${Date.now()}.wav`;
-    link.click();
-    return;
-  }
-  try {
-    const plugin = nativePlugin();
-    await plugin.saveToDownloads({ path: state.audioPath, fileName: `AvayeIranAzad_${Date.now()}.wav` });
-    toast("فایل در پوشه Music/Avaye Iran Azad ذخیره شد.");
-  } catch (error) { toast(error.message || "ذخیره انجام نشد."); }
+$("#clearHistory").onclick = () => {
+  if (!JSON.parse(localStorage.getItem("voice_history") || "[]").length) return;
+  localStorage.removeItem("voice_history");
+  renderHistory();
+  toast("تاریخچه پاک شد.");
 };
-$("#shareBtn").onclick = async () => {
-  if (!state.audioPath) return;
-  if (state.audioPath.startsWith("blob:")) {
-    try {
-      const blob = await (await fetch(state.audioPath)).blob();
-      const file = new File([blob], `AvayeIranAzad_${Date.now()}.wav`, { type: "audio/wav" });
-      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] });
-      else toast("اشتراک‌گذاری فایل در این مرورگر پشتیبانی نمی‌شود.");
-    } catch (error) { toast(error.message || "اشتراک‌گذاری انجام نشد."); }
-    return;
-  }
-  try { await nativePlugin().shareAudio({ path: state.audioPath }); }
-  catch (error) { toast(error.message || "اشتراک‌گذاری انجام نشد."); }
+$$('[data-tone]').forEach((button) => {
+  button.onclick = () => {
+    state.tone = button.dataset.tone;
+    $$('[data-tone]').forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+  };
+});
+$("#downloadBtn").onclick = () => saveAudio("downloads");
+$("#saveBtn").onclick = () => saveAudio("music");
+$("#audioPlayer").onloadedmetadata = () => {
+  const seconds = Math.floor($("#audioPlayer").duration || 0);
+  $("#outputDuration").textContent = seconds ? `${toFaNumber(Math.floor(seconds / 60))}:${toFaNumber(String(seconds % 60).padStart(2, "0"))}` : "";
 };
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeDrawer();
+    $("#settingsModal").classList.add("hidden");
+    $("#historyModal").classList.add("hidden");
+  }
+});
 
-if (localStorage.getItem("light") === "true") document.body.classList.add("light");
 loadPronunciationMap();
 updateStats();
-renderHistory();
-applyEngine(state.engine);
+updateEngineUI();

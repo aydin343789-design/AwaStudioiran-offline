@@ -43,6 +43,7 @@ public class PersianVoicePlugin extends Plugin {
     public void saveToDownloads(PluginCall call) {
         String path = call.getString("path", "");
         String fileName = call.getString("fileName", "AvayeIranAzad.wav");
+        boolean downloadsFolder = "downloads".equalsIgnoreCase(call.getString("directory", "music"));
         try {
             File source = new File(path);
             if (!source.exists()) throw new IllegalStateException("فایل خروجی پیدا نشد.");
@@ -52,9 +53,15 @@ public class PersianVoicePlugin extends Plugin {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.Audio.Media.DISPLAY_NAME, fileName);
                 values.put(MediaStore.Audio.Media.MIME_TYPE, mime);
-                values.put(MediaStore.Audio.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_MUSIC + "/Avaye Iran Azad");
+                String publicDirectory = downloadsFolder
+                        ? android.os.Environment.DIRECTORY_DOWNLOADS
+                        : android.os.Environment.DIRECTORY_MUSIC;
+                values.put(MediaStore.Audio.Media.RELATIVE_PATH, publicDirectory + "/Avaye Iran Azad");
                 values.put(MediaStore.Audio.Media.IS_PENDING, 1);
-                Uri uri = getContext().getContentResolver().insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
+                Uri collection = downloadsFolder
+                        ? MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                        : MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+                Uri uri = getContext().getContentResolver().insert(collection, values);
                 if (uri == null) throw new IllegalStateException("فضای ذخیره‌سازی در دسترس نیست.");
                 try (InputStream in = new FileInputStream(source);
                      OutputStream out = getContext().getContentResolver().openOutputStream(uri)) {
@@ -70,7 +77,10 @@ public class PersianVoicePlugin extends Plugin {
                 ret.put("uri", uri.toString());
                 call.resolve(ret);
             } else {
-                File dir = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "Avaye Iran Azad");
+                String publicDirectory = downloadsFolder
+                        ? android.os.Environment.DIRECTORY_DOWNLOADS
+                        : android.os.Environment.DIRECTORY_MUSIC;
+                File dir = new File(android.os.Environment.getExternalStoragePublicDirectory(publicDirectory), "Avaye Iran Azad");
                 if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("ساخت پوشه ممکن نیست.");
                 File dest = new File(dir, fileName);
                 copy(source, dest);
