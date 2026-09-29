@@ -1,4 +1,6 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
+import { processOffline } from "@soundtouchjs/audio-worklet";
+import soundTouchProcessorUrl from "@soundtouchjs/audio-worklet/processor?url";
 
 function fourCC(view, offset) {
   return String.fromCharCode(view.getUint8(offset), view.getUint8(offset + 1), view.getUint8(offset + 2), view.getUint8(offset + 3));
@@ -69,38 +71,67 @@ function wavToMonoPcm16(buffer) {
   return { samples: mono, sampleRate: format.sampleRate };
 }
 
-function changeTempo(samples, speed) {
-  const ratio = Math.max(0.8, Math.min(1.2, Number(speed) || 1));
-  if (Math.abs(ratio - 1) < 0.001) return samples;
-  const length = Math.max(1, Math.round(samples.length / ratio));
-  const output = new Int16Array(length);
-  for (let i = 0; i < length; i++) {
-    const position = i * ratio;
-    const left = Math.min(samples.length - 1, Math.floor(position));
-    const right = Math.min(samples.length - 1, left + 1);
-    const fraction = position - left;
-    output[i] = Math.round(samples[left] + (samples[right] - samples[left]) * fraction);
+function toAudioBuffer(samples, sampleRate) {
+  if (typeof AudioBuffer === "undefined") {
+    throw new Error("پردازش صوت در این WebView پشتیبانی نمی‌شود. Android System WebView را به‌روز کنید.");
   }
-  return output;
+  const audio = new AudioBuffer({ length: samples.length, numberOfChannels: 1, sampleRate });
+  const channel = audio.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) channel[i] = samples[i] / 32768;
+  return audio;
 }
 
-export async function wavBlobToMp3(blob, { speed = 1, onProgress } = {}) {
+function audioBufferToPcm16(audioBuffer) {
+  const source = audioBuffer.getChannelData(0);
+  const samples = new Int16Array(source.length);
+  for (let i = 0; i < source.length; i++) {
+    const value = Math.max(-1, Math.min(1, source[i]));
+    samples[i] = value < 0 ? Math.round(value * 32768) : Math.round(value * 32767);
+  }
+  return samples;
+}
+
+export async function wavBlobToMp3(blob, { speed = 1, pitchSemitones = 0, onProgress } = {}) {
   const { samples: rawSamples, sampleRate } = wavToMonoPcm16(await blob.arrayBuffer());
-  const samples = changeTempo(rawSamples, speed);
+  const playbackRate = Math.max(0.55, Math.min(1.4, Number(speed) || 1));
+  const pitch = Math.max(-6, Math.min(6, Number(pitchSemitones) || 0));
+  let samples = rawSamples;
+
+  if (Math.abs(playbackRate - 1) > 0.005 || Math.abs(pitch) > 0.05) {
+    onProgress?.(3, "تنظیم سرعت و زیر‌وبم صدا");
+    try {
+      const input = toAudioBuffer(rawSamples, sampleRate);
+      const rendered = await processOffline({
+        input,
+        processorUrl: soundTouchProcessorUrl,
+        playbackRate,
+        pitchSemitones: pitch,
+        stretchParameters: { quickSeek: true, overlapMs: 10 }
+      });
+      samples = audioBufferToPcm16(rendered);
+    } catch (error) {
+      console.error("SoundTouch offline rendering failed", error);
+      throw new Error("اعمال سرعت و زیر‌وبم روی این نسخهٔ WebView ممکن نشد. Android System WebView را به‌روز کنید و دوباره تلاش کنید.");
+    }
+  }
+
+  onProgress?.(30, "آماده‌سازی فایل MP3");
   const encoder = new Mp3Encoder(1, sampleRate, 96);
   const chunks = [];
   const blockSize = 1152;
+  const yieldEverySamples = blockSize * 24;
 
   for (let offset = 0; offset < samples.length; offset += blockSize) {
     const bytes = encoder.encodeBuffer(samples.subarray(offset, Math.min(offset + blockSize, samples.length)));
     if (bytes.length) chunks.push(bytes);
-    if (offset % (blockSize * 100) === 0) {
-      onProgress?.(Math.min(99, Math.floor((offset / samples.length) * 100)));
+    if (offset % yieldEverySamples < blockSize || offset + blockSize >= samples.length) {
+      const progress = samples.length ? Math.min(99, Math.floor((offset / samples.length) * 69) + 30) : 99;
+      onProgress?.(progress, "فشرده‌سازی MP3");
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }
   const tail = encoder.flush();
   if (tail.length) chunks.push(tail);
-  onProgress?.(100);
+  onProgress?.(100, "فایل MP3 آماده است");
   return new Blob(chunks, { type: "audio/mpeg" });
 }

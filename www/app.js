@@ -1,32 +1,45 @@
-import { modelIsDownloaded, preparePersianVoice, synthesizePersian, PERSIAN_VOICE_ID, PERSIAN_WOMAN_VOICE_ID } from "./piper-engine.js";
+import { PERSIAN_VOICE_ID, PERSIAN_WOMAN_VOICE_ID } from "./voice-models.js";
 import { wavBlobToMp3 } from "./mp3-encoder.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const MAX_CHARS = 3000;
 const toneProfiles = {
-  normal: { label: "عادی", speed: 1.00 },
-  formal: { label: "رسمی", speed: 0.94 },
-  news: { label: "خبری", speed: 1.07 },
-  cheerful: { label: "شاد", speed: 1.08 },
-  intimate: { label: "صمیمی", speed: 0.96 }
+  normal: { label: "عادی", speed: 1.00, pitch: 0, pause: 1 },
+  formal: { label: "رسمی", speed: 0.90, pitch: -0.5, pause: 1.3 },
+  news: { label: "خبری", speed: 1.05, pitch: -0.25, pause: 0.8 },
+  cheerful: { label: "شاد", speed: 1.12, pitch: 0.7, pause: 0.7 },
+  intimate: { label: "صمیمی", speed: 0.88, pitch: -0.75, pause: 1.45 }
 };
 const voiceProfiles = {
   male: { id: PERSIAN_VOICE_ID, label: "امیر · مردانه" },
-  female: { id: PERSIAN_WOMAN_VOICE_ID, label: "مانا · زنانه" }
+  female: { id: PERSIAN_WOMAN_VOICE_ID, label: "مانا · زنانه" },
+  child: { id: PERSIAN_WOMAN_VOICE_ID, label: "کودک‌نما · آزمایشی" }
 };
+if (localStorage.getItem("audio_settings_version") !== "2") {
+  localStorage.setItem("speech_speed", "0.82");
+  localStorage.setItem("speech_pitch", "0");
+  localStorage.setItem("audio_settings_version", "2");
+}
 const state = {
   engine: localStorage.getItem("engine") === "online" ? "online" : "offline",
-  voice: localStorage.getItem("tts_voice") === "female" ? "female" : "male",
+  voice: voiceProfiles[localStorage.getItem("tts_voice")] ? localStorage.getItem("tts_voice") : "male",
   tone: toneProfiles[localStorage.getItem("tts_tone")] ? localStorage.getItem("tts_tone") : "normal",
-  speed: Math.min(1.1, Math.max(0.9, Number(localStorage.getItem("speech_speed")) || 1)),
+  speed: Math.min(1.4, Math.max(0.6, Number(localStorage.getItem("speech_speed")) || 0.82)),
+  pitch: Math.min(4, Math.max(-4, Number(localStorage.getItem("speech_pitch")) || 0)),
   audioPath: null,
   audioUrl: null,
-  preparing: false
+  preparing: false,
+  preloading: false
 };
 const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
 const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
 let pronunciationMap = {};
+let ttsWorker = null;
+let workerSequence = 0;
+let preloadPromise = null;
+const workerTasks = new Map();
+const readyVoiceIds = new Set();
 
 function gatewayUrl() {
   return (localStorage.getItem("tts_gateway_url") || "").trim().replace(/\/$/, "");
@@ -76,12 +89,19 @@ function updateSpeedUI() {
   if (value) value.textContent = `${toFaNumber(state.speed.toFixed(2))}×`;
 }
 
-function toast(message) {
+function updatePitchUI() {
+  const slider = $("#speechPitchRange");
+  if (slider) slider.value = String(state.pitch);
+  const value = $("#speechPitchValue");
+  if (value) value.textContent = `${state.pitch > 0 ? "+" : ""}${toFaNumber(state.pitch.toFixed(1))}`;
+}
+
+function toast(message, duration = 1800) {
   const element = $("#toast");
   element.textContent = message;
   element.classList.add("show");
   clearTimeout(window.__toast);
-  window.__toast = setTimeout(() => element.classList.remove("show"), 3600);
+  window.__toast = setTimeout(() => element.classList.remove("show"), duration);
 }
 
 function nativePlugin() {
@@ -109,6 +129,50 @@ function setEngineStatus(text) {
   $("#modelStatus").textContent = text;
 }
 
+function ensureTtsWorker() {
+  if (ttsWorker) return ttsWorker;
+  ttsWorker = new Worker(new URL("./tts-worker.js", import.meta.url), { type: "module" });
+  ttsWorker.onmessage = ({ data }) => {
+    const task = workerTasks.get(data.id);
+    if (!task) return;
+    if (data.type === "progress") {
+      task.onProgress?.(data.progress || {});
+      return;
+    }
+    if (data.type === "voice-ready") {
+      readyVoiceIds.add(data.voiceId);
+      task.onProgress?.({ task: "preload", phase: "voice-ready", voiceId: data.voiceId, label: data.voiceLabel });
+      checkOffline();
+      return;
+    }
+    if (data.type === "voice-error") {
+      task.onProgress?.({ task: "preload", phase: "error", voiceId: data.voiceId, label: data.message });
+      return;
+    }
+    workerTasks.delete(data.id);
+    if (data.type === "result") task.resolve(data.result);
+    else if (data.type === "error") task.reject(new Error(data.message || "پردازش گفتار ناموفق بود."));
+  };
+  ttsWorker.onerror = (event) => {
+    const error = new Error(event.message || "موتور آفلاین اجرا نشد.");
+    workerTasks.forEach((task) => task.reject(error));
+    workerTasks.clear();
+    ttsWorker?.terminate();
+    ttsWorker = null;
+  };
+  return ttsWorker;
+}
+
+function requestTtsWorker(type, payload, onProgress) {
+  const worker = ensureTtsWorker();
+  const id = ++workerSequence;
+  return new Promise((resolve, reject) => {
+    workerTasks.set(id, { resolve, reject, onProgress });
+    try { worker.postMessage({ id, type, ...payload }); }
+    catch (error) { workerTasks.delete(id); reject(error); }
+  });
+}
+
 function selectedVoice() {
   return voiceProfiles[state.voice] || voiceProfiles.male;
 }
@@ -130,21 +194,54 @@ function selectVoice(key) {
 }
 
 function updateOfflineProgress(progress) {
-  if (progress.phase === "ready") {
-    setEngineStatus(`${selectedVoice().label} آماده`);
-    $("#prepareOfflineBtn").classList.add("hidden");
+  if (progress.task === "generate") {
+    let percent = Number.isFinite(Number(progress.percent)) ? Number(progress.percent) : 3;
+    let label = progress.label || progress.asset || "در حال ساخت گفتار…";
+    const loaded = Number(progress.loaded) || 0;
+    const total = Number(progress.total) || 0;
+    if (!Number.isFinite(Number(progress.percent)) && total > 0) {
+      percent = 2 + Math.min(6, Math.floor((loaded / total) * 6));
+      label = `${progress.asset || "آماده‌سازی موتور"} · ${toFaNumber(Math.floor((loaded / total) * 100))}٪`;
+    }
+    showGenerationProgress(percent, label);
     return;
   }
-  const loaded = Number(progress.loaded) || 0;
-  const total = Number(progress.total) || 0;
-  const name = progress.asset || "مدل فارسی";
-  if (progress.cached) {
-    setEngineStatus("در حال آماده‌سازی آفلاین");
-  } else if (total > 0) {
-    const percent = Math.min(100, Math.floor((loaded / total) * 100));
-    setEngineStatus(`دریافت ${name} · ${toFaNumber(percent)}٪`);
-  } else if (progress.phase === "model") {
-    setEngineStatus(progress.asset || `آماده‌سازی ${selectedVoice().label}…`);
+  if (progress.task === "preload" || progress.task === "prepare") {
+    const panel = $("#offlineProgressPanel");
+    const bar = $("#offlineProgressBar");
+    panel?.classList.remove("hidden");
+    if (progress.phase === "voice-ready") {
+      const percent = Math.round((readyVoiceIds.size / 2) * 100);
+      if (bar) bar.value = percent;
+      $("#offlineProgressLabel").textContent = `مدل ${progress.label || "صدا"} آماده شد`;
+      return;
+    }
+    if (progress.phase === "error") {
+      setEngineStatus("دریافت مدل ناموفق بود");
+      $("#offlineProgressLabel").textContent = progress.label || "دریافت مدل ناموفق بود";
+      return;
+    }
+    const loaded = Number(progress.loaded) || 0;
+    const total = Number(progress.total) || 0;
+    const name = progress.asset || "فایل آفلاین";
+    if (total > 0 && bar) {
+      const percent = Math.min(100, Math.floor((loaded / total) * 100));
+      bar.value = percent;
+      $("#offlineProgressLabel").textContent = progress.cached
+        ? `${name} · آماده`
+        : `${name} · ${toFaNumber(percent)}٪`;
+      setEngineStatus(progress.cached ? "آماده‌سازی آفلاین" : `دریافت ${name} · ${toFaNumber(percent)}٪`);
+    } else {
+      if (bar) bar.removeAttribute("value");
+      $("#offlineProgressLabel").textContent = name;
+      setEngineStatus(`آماده‌سازی ${name}…`);
+    }
+    return;
+  }
+  if (progress.phase === "ready") {
+    readyVoiceIds.add(progress.voiceId || selectedVoice().id);
+    setEngineStatus(`${selectedVoice().label} آماده`);
+    $("#prepareOfflineBtn").classList.add("hidden");
   }
 }
 
@@ -166,7 +263,12 @@ async function onlineGenerate(text) {
 }
 
 async function offlineGenerate(text) {
-  return synthesizePersian(text, selectedVoice().id, updateOfflineProgress);
+  const result = await requestTtsWorker("synthesize", {
+    text,
+    voiceId: selectedVoice().id,
+    tone: state.tone
+  }, updateOfflineProgress);
+  return result.wav;
 }
 
 function updateStats() {
@@ -225,7 +327,25 @@ function playPath(path) {
 function setBusy(busy, label = "در حال ساخت فایل…") {
   $("#generateBtn").disabled = busy;
   $("#generateLabel").textContent = busy ? label : "تبدیل به گفتار";
-  if (busy) $("#playerPanel").classList.add("hidden");
+  if (busy) {
+    $("#playerPanel").classList.add("hidden");
+    showGenerationProgress(1, label);
+  }
+}
+
+function showGenerationProgress(percent, label) {
+  const panel = $("#generationProgressPanel");
+  if (!panel) return;
+  clearTimeout(window.__generationProgressTimer);
+  panel.classList.remove("hidden");
+  $("#generationProgressLabel").textContent = label;
+  $("#generationProgressPercent").textContent = `${toFaNumber(Math.round(percent))}٪`;
+  $("#generationProgressBar").value = Math.max(0, Math.min(100, percent));
+}
+
+function hideGenerationProgressLater() {
+  clearTimeout(window.__generationProgressTimer);
+  window.__generationProgressTimer = setTimeout(() => $("#generationProgressPanel")?.classList.add("hidden"), 850);
 }
 
 async function prepareOffline() {
@@ -234,7 +354,8 @@ async function prepareOffline() {
   $("#prepareOfflineBtn").disabled = true;
   setEngineStatus(`در حال دریافت مدل ${selectedVoice().label}…`);
   try {
-    await preparePersianVoice(selectedVoice().id, updateOfflineProgress);
+    await requestTtsWorker("prepare", { voiceId: selectedVoice().id }, updateOfflineProgress);
+    readyVoiceIds.add(selectedVoice().id);
     toast("مدل آفلاین آماده است.");
   } catch (error) {
     console.error(error);
@@ -243,20 +364,55 @@ async function prepareOffline() {
   } finally {
     state.preparing = false;
     $("#prepareOfflineBtn").disabled = false;
+    checkOffline();
+    if (readyVoiceIds.has(selectedVoice().id) && !state.preloading) {
+      window.setTimeout(() => $("#offlineProgressPanel")?.classList.add("hidden"), 800);
+    }
   }
 }
 
-async function checkOffline() {
+function checkOffline() {
+  const online = state.engine === "online";
+  const ready = readyVoiceIds.has(selectedVoice().id);
+  $("#engineStatus").textContent = online ? "آنلاین" : "آفلاین";
+  $("#prepareOfflineBtn").classList.toggle("hidden", online || ready || state.preloading);
+  if (!online && ready) setEngineStatus(`${selectedVoice().label} آماده`);
+  else if (!online && state.preloading) setEngineStatus("دریافت خودکار مدل‌های آفلاین…");
+  else if (!online) setEngineStatus(`مدل ${selectedVoice().label} آماده‌سازی نشده`);
+}
+
+async function startOfflinePreload() {
+  if (state.preloading || preloadPromise) return preloadPromise;
+  state.preloading = true;
+  $("#prepareOfflineBtn").classList.add("hidden");
+  $("#offlineProgressPanel").classList.remove("hidden");
+  $("#offlineProgressLabel").textContent = "آماده‌سازی مدل‌های آفلاین…";
+  const primaryVoiceId = selectedVoice().id;
   try {
-    const exists = await modelIsDownloaded(selectedVoice().id);
-    const online = state.engine === "online";
-    $("#prepareOfflineBtn").classList.toggle("hidden", online || exists);
-    $("#engineStatus").textContent = online ? "آنلاین" : "آفلاین";
-    if (!online) setEngineStatus(exists ? `${selectedVoice().label} آماده` : `مدل ${selectedVoice().label} دریافت نشده`);
+    preloadPromise = requestTtsWorker("preload", { primaryVoiceId }, updateOfflineProgress);
+    const result = await preloadPromise;
+    (result.ready || []).forEach((voiceId) => readyVoiceIds.add(voiceId));
+    const failed = result.failed || [];
+    if (!failed.length && readyVoiceIds.has(PERSIAN_VOICE_ID) && readyVoiceIds.has(PERSIAN_WOMAN_VOICE_ID)) {
+      $("#offlineProgressBar").value = 100;
+      $("#offlineProgressLabel").textContent = "مدل‌های آفلاین آماده‌اند";
+      setEngineStatus("مدل‌های آفلاین آماده‌اند");
+      window.setTimeout(() => $("#offlineProgressPanel")?.classList.add("hidden"), 1100);
+    } else {
+      const message = failed[0]?.message || "برخی مدل‌ها هنوز آماده نیستند.";
+      $("#offlineProgressLabel").textContent = message;
+      setEngineStatus("دانلود مدل کامل نشد");
+      $("#prepareOfflineBtn").classList.toggle("hidden", readyVoiceIds.has(selectedVoice().id));
+    }
   } catch (error) {
+    console.error(error);
+    $("#offlineProgressLabel").textContent = error.message || "دریافت مدل‌ها ناموفق بود";
+    setEngineStatus("دانلود مدل کامل نشد");
     $("#prepareOfflineBtn").classList.remove("hidden");
-    $("#engineStatus").textContent = state.engine === "online" ? "آنلاین" : "آفلاین";
-    if (state.engine === "offline") setEngineStatus("WebView را به‌روز کنید");
+  } finally {
+    state.preloading = false;
+    preloadPromise = null;
+    checkOffline();
   }
 }
 
@@ -269,7 +425,10 @@ function updateEngineUI() {
     $("#modelStatus").textContent = "پردازش آنلاین";
     $("#prepareOfflineBtn").classList.add("hidden");
   }
-  else checkOffline();
+  else {
+    checkOffline();
+  }
+  startOfflinePreload();
 }
 
 async function generate() {
@@ -279,24 +438,32 @@ async function generate() {
   const text = normalizePersian(raw);
   const tone = toneProfiles[state.tone] || toneProfiles.normal;
   const voice = selectedVoice();
-  const tempo = Math.max(0.8, Math.min(1.2, tone.speed * state.speed));
+  const childTempoModifier = state.voice === "child" ? 1.15 : 1;
+  const childPitchModifier = state.voice === "child" ? 3.5 : 0;
+  const tempo = Math.max(0.55, Math.min(1.4, tone.speed * state.speed * childTempoModifier));
+  const pitchSemitones = Math.max(-6, Math.min(6, state.pitch + tone.pitch + childPitchModifier));
   setBusy(true, state.engine === "online" ? "در حال دریافت صدا…" : "در حال ساخت صدای آفلاین…");
   try {
     const wav = state.engine === "online" ? await onlineGenerate(text) : await offlineGenerate(text);
     let mp3 = wav;
     if (!wav.type.includes("mpeg")) {
-      $("#generateLabel").textContent = "در حال آماده‌سازی MP3…";
-      mp3 = await wavBlobToMp3(wav, { speed: tempo, onProgress: (percent) => {
-        if (percent < 100) $("#generateLabel").textContent = `ساخت MP3 · ${toFaNumber(percent)}٪`;
-      }});
+      showGenerationProgress(81, "اعمال تنظیمات صدا…");
+      mp3 = await wavBlobToMp3(wav, {
+        speed: tempo,
+        pitchSemitones,
+        onProgress: (percent, phase) => showGenerationProgress(80 + percent * 0.19, phase || "ساخت فایل MP3")
+      });
     }
+    showGenerationProgress(96, "ذخیرهٔ فایل MP3…");
     const saved = await saveBlobToAppCache(mp3);
     await playPath(saved.path);
-    $("#outputMeta").textContent = `${voice.label} · ${tone.label} · ${toFaNumber(tempo.toFixed(2))}×`;
+    const pitchLabel = pitchSemitones ? ` · زیر‌وبم ${pitchSemitones > 0 ? "+" : ""}${toFaNumber(pitchSemitones.toFixed(1))}` : "";
+    $("#outputMeta").textContent = `${voice.label} · ${tone.label} · ${toFaNumber(tempo.toFixed(2))}×${pitchLabel}`;
     $("#outputDuration").textContent = "";
     const history = JSON.parse(localStorage.getItem("voice_history") || "[]");
-    history.unshift({ text: raw, path: saved.path, name: saved.name || fileName(), time: Date.now(), tone: state.tone, toneLabel: tone.label, speed: tempo, voice: state.voice, voiceLabel: voice.label, engine: state.engine });
+    history.unshift({ text: raw, path: saved.path, name: saved.name || fileName(), time: Date.now(), tone: state.tone, toneLabel: tone.label, speed: tempo, pitch: pitchSemitones, voice: state.voice, voiceLabel: voice.label, engine: state.engine });
     localStorage.setItem("voice_history", JSON.stringify(history.slice(0, 30)));
+    showGenerationProgress(100, "فایل MP3 آماده است");
     toast("فایل MP3 آمادهٔ پخش است.");
     setTimeout(() => $("#playerPanel").scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
   } catch (error) {
@@ -304,6 +471,7 @@ async function generate() {
     toast(error.message || "تبدیل صدا انجام نشد.");
   } finally {
     setBusy(false);
+    hideGenerationProgressLater();
   }
 }
 
@@ -370,6 +538,7 @@ $("#settingsAction").onclick = () => {
   $("#gatewayUrl").value = gatewayUrl();
   $("#onlineToggle").checked = state.engine === "online";
   updateSpeedUI();
+  updatePitchUI();
   updateToneUI();
   $("#settingsModal").classList.remove("hidden");
 };
@@ -389,7 +558,7 @@ $("#saveSettings").onclick = () => {
   localStorage.setItem("engine", state.engine);
   $("#settingsModal").classList.add("hidden");
   updateEngineUI();
-  toast("تنظیمات ذخیره شد.");
+  toast("تنظیمات ذخیره شد.", 1100);
 };
 $("#testOnlineBtn").onclick = testOnline;
 $("#clearHistory").onclick = () => {
@@ -402,12 +571,18 @@ $$('[data-tone]').forEach((button) => {
   button.onclick = () => setTone(button.dataset.tone);
 });
 $("#speechSpeedRange").addEventListener("input", (event) => {
-  state.speed = Math.min(1.1, Math.max(0.9, Number(event.target.value) || 1));
+  state.speed = Math.min(1.4, Math.max(0.6, Number(event.target.value) || 0.82));
   localStorage.setItem("speech_speed", String(state.speed));
   updateSpeedUI();
 });
+$("#speechPitchRange").addEventListener("input", (event) => {
+  state.pitch = Math.min(4, Math.max(-4, Number(event.target.value) || 0));
+  localStorage.setItem("speech_pitch", String(state.pitch));
+  updatePitchUI();
+});
 updateToneUI();
 updateSpeedUI();
+updatePitchUI();
 $("#downloadBtn").onclick = () => saveAudio("downloads");
 $("#saveBtn").onclick = () => saveAudio("music");
 $("#audioPlayer").onloadedmetadata = () => {

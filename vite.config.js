@@ -4,6 +4,7 @@ export default defineConfig({
   root: "www",
   base: "./",
   publicDir: "public",
+  worker: { format: "es" },
   ...(process.env.VITE_PREVIEW_ALLOWED_HOST ? { preview: { allowedHosts: [process.env.VITE_PREVIEW_ALLOWED_HOST] } } : {}),
   build: {
     outDir: "build",

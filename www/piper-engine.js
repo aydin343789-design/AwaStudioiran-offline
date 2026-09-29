@@ -1,15 +1,14 @@
-import { PATH_MAP, TtsSession, stored } from "@mintplex-labs/piper-tts-web";
+import { HF_BASE, PATH_MAP, TtsSession, stored } from "@mintplex-labs/piper-tts-web";
+import { PERSIAN_VOICE_ID, PERSIAN_WOMAN_VOICE_ID } from "./voice-models.js";
 
-export const PERSIAN_VOICE_ID = "fa_IR-amir-medium";
-export const PERSIAN_WOMAN_VOICE_ID = "fa_IR-mana-medium";
+export { PERSIAN_VOICE_ID, PERSIAN_WOMAN_VOICE_ID };
+
 export const PERSIAN_VOICES = {
   male: { id: PERSIAN_VOICE_ID, label: "امیر · مردانه" },
   female: { id: PERSIAN_WOMAN_VOICE_ID, label: "مانا · زنانه" }
 };
 
-// Piper Web normally resolves models from its fixed diffusionstudio mirror.
-// This pinned library builds URLs from HF_BASE + PATH_MAP[id]; the relative path
-// resolves to the model author's public Hugging Face repo and keeps its OPFS cache.
+// This relative route redirects to the model author's public Hugging Face repo.
 PATH_MAP[PERSIAN_WOMAN_VOICE_ID] = "../../../../MahtaFetrat/Mana-Persian-Piper/resolve/main/fa_IR-mana-medium.onnx";
 
 const RUNTIME_ASSETS = [
@@ -81,7 +80,7 @@ async function cachePut(key, value) {
 }
 
 async function fetchBlobWithProgress(url, onProgress) {
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`دریافت فایل runtime ناموفق بود (${response.status}).`);
   const total = Number(response.headers.get("content-length")) || 0;
   if (!response.body?.getReader) {
@@ -139,14 +138,95 @@ function assertVoiceId(voiceId) {
   }
 }
 
+async function getModelDirectory() {
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle("piper", { create: true });
+}
+
+async function isModelFileComplete(directory, filename) {
+  try {
+    const file = await directory.getFileHandle(filename);
+    const blob = await file.getFile();
+    const minimumSize = filename.endsWith(".onnx") ? 20 * 1024 * 1024 : 128;
+    return blob.size >= minimumSize;
+  } catch (_) {
+    return false;
+  }
+}
+
 export async function modelIsDownloaded(voiceId = PERSIAN_VOICE_ID) {
   assertLocalStorageSupport();
   assertVoiceId(voiceId);
   try {
-    return (await stored()).includes(voiceId);
+    if (!(await stored()).includes(voiceId)) return false;
+    const directory = await getModelDirectory();
+    return await isModelFileComplete(directory, `${voiceId}.onnx`) &&
+      await isModelFileComplete(directory, `${voiceId}.onnx.json`);
   } catch (_) {
     return false;
   }
+}
+
+async function cacheModelFile(url, asset, onProgress) {
+  const directory = await getModelDirectory();
+  const filename = url.split("/").at(-1);
+  if (await isModelFileComplete(directory, filename)) {
+    const cached = await (await directory.getFileHandle(filename)).getFile();
+    onProgress?.({ phase: "model-download", url, asset, loaded: cached.size, total: cached.size, cached: true });
+    return;
+  }
+
+  let handle;
+  let writable;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`دریافت ${asset} ناموفق بود (${response.status}).`);
+    const total = Number(response.headers.get("content-length")) || 0;
+    handle = await directory.getFileHandle(filename, { create: true });
+    writable = await handle.createWritable();
+    let loaded = 0;
+    if (response.body?.getReader) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writable.write(value);
+        loaded += value.byteLength;
+        onProgress?.({ phase: "model-download", url, asset, loaded, total });
+      }
+    } else {
+      const blob = await response.blob();
+      await writable.write(blob);
+      loaded = blob.size;
+      onProgress?.({ phase: "model-download", url, asset, loaded, total: total || loaded });
+    }
+    await writable.close();
+    const saved = await handle.getFile();
+    const minimumSize = filename.endsWith(".onnx") ? 20 * 1024 * 1024 : 128;
+    if (saved.size < minimumSize) throw new Error(`فایل ${asset} ناقص دریافت شده است.`);
+    onProgress?.({ phase: "model-download", url, asset, loaded: saved.size, total: total || saved.size });
+  } catch (error) {
+    try { await writable?.abort?.(); } catch (_) {}
+    try { await directory.removeEntry(filename); } catch (_) {}
+    throw error;
+  }
+}
+
+export async function prefetchPersianVoice(voiceId, onProgress) {
+  assertLocalStorageSupport();
+  assertVoiceId(voiceId);
+  try { await navigator.storage.persist?.(); } catch (_) {}
+  if (await modelIsDownloaded(voiceId)) {
+    onProgress?.({ phase: "model-download", asset: PERSIAN_VOICES[voiceId === PERSIAN_VOICE_ID ? "male" : "female"].label, loaded: 1, total: 1, cached: true });
+    return;
+  }
+  const path = PATH_MAP[voiceId];
+  if (!path) throw new Error("نشانی مدل صدا در دسترس نیست.");
+  const base = `${HF_BASE}/${path}`;
+  const label = PERSIAN_VOICES[voiceId === PERSIAN_VOICE_ID ? "male" : "female"].label;
+  await cacheModelFile(base, `مدل ${label}`, onProgress);
+  await cacheModelFile(`${base}.json`, `تنظیمات ${label}`, onProgress);
+  if (!(await modelIsDownloaded(voiceId))) throw new Error(`ذخیرهٔ مدل ${label} تأیید نشد.`);
 }
 
 export async function preparePersianVoice(voiceId = PERSIAN_VOICE_ID, onProgress) {
@@ -165,7 +245,7 @@ export async function preparePersianVoice(voiceId = PERSIAN_VOICE_ID, onProgress
       const [ortWasm, piperWasm, piperData] = await Promise.all(
         RUNTIME_ASSETS.map((asset) => loadAsset(asset, onProgress))
       );
-      onProgress?.({ phase: "model", loaded: 0, total: 0, asset: `مدل ${voice.label} (حدود ۶۴ مگابایت)` });
+      onProgress?.({ phase: "model", loaded: 0, total: 0, asset: `مدل ${voice.label}` });
       const wasmPaths = {
         onnxWasm: {
           "ort-wasm-simd.wasm": ortWasm,
@@ -191,9 +271,4 @@ export async function preparePersianVoice(voiceId = PERSIAN_VOICE_ID, onProgress
     }
   })();
   return sessionPromise;
-}
-
-export async function synthesizePersian(text, voiceId = PERSIAN_VOICE_ID, onProgress) {
-  const session = await preparePersianVoice(voiceId, onProgress);
-  return session.predict(text);
 }

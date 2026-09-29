@@ -49,10 +49,11 @@
             <span class="voice-caption">امیر · آفلاین</span>
             <span class="selected-mark" aria-hidden="true">✓</span>
           </button>
-          <button class="voice-card unavailable" type="button" disabled aria-label="صدای کودک، به‌زودی">
+          <button class="voice-card" id="voiceChild" data-voice="child" type="button" aria-pressed="false" aria-label="صدای کودک‌نما، آزمایشی">
             <span class="voice-photo"><img src="assets/voice-child.webp" alt="آواتار کودک"></span>
-            <span class="voice-name">کودک</span>
-            <span class="voice-caption">مدل آماده نیست</span>
+            <span class="voice-name">کودک‌نما</span>
+            <span class="voice-caption">افکت آزمایشی</span>
+            <span class="selected-mark" aria-hidden="true">✓</span>
           </button>
         </div>
       </section>
@@ -86,12 +87,20 @@
         <span class="model-label"><span class="model-pulse"></span><span id="modelStatus">آفلاین · مدل بررسی می‌شود</span></span>
         <button id="prepareOfflineBtn" class="model-action hidden" type="button">دریافت مدل</button>
       </div>
+      <div id="offlineProgressPanel" class="progress-card hidden" aria-live="polite">
+        <div class="progress-heading"><span id="offlineProgressLabel">آماده‌سازی مدل‌های آفلاین…</span></div>
+        <progress id="offlineProgressBar" max="100" value="0" aria-label="پیشرفت دریافت مدل"></progress>
+      </div>
 
       <button id="generateBtn" class="generate-btn" type="button">
         <span class="generate-symbol" aria-hidden="true">✦</span>
         <span id="generateLabel">تبدیل به گفتار</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13m-5-5 5 5-5 5"/></svg>
       </button>
+      <div id="generationProgressPanel" class="progress-card generation-progress hidden" aria-live="polite">
+        <div class="progress-heading"><span id="generationProgressLabel">آماده‌سازی…</span><b id="generationProgressPercent">۰٪</b></div>
+        <progress id="generationProgressBar" max="100" value="0" aria-label="درصد تولید فایل صوتی"></progress>
+      </div>
 
       <section id="playerPanel" class="player-card hidden" aria-labelledby="playerHeading">
         <div class="player-heading">
@@ -134,8 +143,10 @@
       <div class="sheet-handle"></div>
       <div class="sheet-heading"><div><span class="section-kicker">تنظیمات</span><h2 id="settingsHeading">اتصال و پردازش</h2></div><button id="closeSettings" class="icon-button" type="button" aria-label="بستن">×</button></div>
       <div class="speech-settings">
-        <label class="field-label" for="speechSpeedRange">سرعت و ضرب‌آهنگ</label>
-        <div class="tempo-row"><span>آرام</span><input id="speechSpeedRange" class="tempo-range" type="range" min="0.9" max="1.1" step="0.05" value="1" aria-label="سرعت گفتار"><span>تند</span><b id="speechSpeedValue">۱٫۰۰×</b></div>
+        <label class="field-label" for="speechSpeedRange">سرعت بیان</label>
+        <div class="tempo-row"><span>آرام</span><input id="speechSpeedRange" class="tempo-range" type="range" min="0.6" max="1.4" step="0.05" value="0.82" aria-label="سرعت گفتار"><span>تند</span><b id="speechSpeedValue">۰٫۸۲×</b></div>
+        <label class="field-label" for="speechPitchRange">زیر و بمی صدا</label>
+        <div class="tempo-row pitch-row"><span>بم</span><input id="speechPitchRange" class="tempo-range" type="range" min="-4" max="4" step="0.5" value="0" aria-label="زیر و بمی صدا"><span>زیر</span><b id="speechPitchValue">۰٫۰</b></div>
         <span class="field-label rhythm-label">ریتم</span>
         <div class="tone-grid settings-tone-grid" role="group" aria-label="انتخاب ریتم گفتار">
           <button class="tone-chip active" type="button" data-tone="normal" aria-pressed="true">عادی</button>

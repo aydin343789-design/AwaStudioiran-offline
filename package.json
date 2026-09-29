@@ -1,6 +1,6 @@
 {
   "name": "avaye-iran-azad",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "Offline Persian TTS studio with local Piper WebAssembly, tempo presets, and MP3 export.",
   "scripts": {
@@ -13,6 +13,7 @@
     "@capacitor/android": "8.5.2",
     "@capacitor/core": "8.5.2",
     "@mintplex-labs/piper-tts-web": "1.0.5",
+    "@soundtouchjs/audio-worklet": "2.1.1",
     "onnxruntime-web": "1.18.0"
   },
   "devDependencies": {
