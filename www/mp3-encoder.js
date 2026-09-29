@@ -70,7 +70,7 @@ function wavToMonoPcm16(buffer) {
 }
 
 function changeTempo(samples, speed) {
-  const ratio = Math.max(0.9, Math.min(1.1, Number(speed) || 1));
+  const ratio = Math.max(0.8, Math.min(1.2, Number(speed) || 1));
   if (Math.abs(ratio - 1) < 0.001) return samples;
   const length = Math.max(1, Math.round(samples.length / ratio));
   const output = new Int16Array(length);

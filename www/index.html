@@ -37,21 +37,22 @@
           <span class="section-rule"></span>
         </div>
         <div class="voice-grid" role="group" aria-label="انتخاب شخصیت صدا">
-          <button class="voice-card unavailable" type="button" disabled aria-label="صدای زن، به‌زودی">
+          <button class="voice-card" id="voiceWoman" data-voice="female" type="button" aria-pressed="false" aria-label="صدای زنانهٔ مانا، آفلاین">
             <span class="voice-photo"><img src="assets/voice-woman.webp" alt="آواتار زن"></span>
             <span class="voice-name">زن</span>
-            <span class="voice-caption">به‌زودی</span>
+            <span class="voice-caption">مانا · آفلاین</span>
+            <span class="selected-mark" aria-hidden="true">✓</span>
           </button>
-          <button class="voice-card active" id="voiceMan" type="button" aria-pressed="true" aria-label="مدل مردانهٔ امیر، فعال">
+          <button class="voice-card active" id="voiceMan" data-voice="male" type="button" aria-pressed="true" aria-label="صدای مردانهٔ امیر">
             <span class="voice-photo"><img src="assets/voice-man.webp" alt="آواتار مرد"></span>
             <span class="voice-name">مرد</span>
-            <span class="voice-caption">امیر · فعال</span>
+            <span class="voice-caption">امیر · آفلاین</span>
             <span class="selected-mark" aria-hidden="true">✓</span>
           </button>
           <button class="voice-card unavailable" type="button" disabled aria-label="صدای کودک، به‌زودی">
             <span class="voice-photo"><img src="assets/voice-child.webp" alt="آواتار کودک"></span>
             <span class="voice-name">کودک</span>
-            <span class="voice-caption">به‌زودی</span>
+            <span class="voice-caption">مدل آماده نیست</span>
           </button>
         </div>
       </section>
@@ -132,6 +133,18 @@
     <section class="sheet-card">
       <div class="sheet-handle"></div>
       <div class="sheet-heading"><div><span class="section-kicker">تنظیمات</span><h2 id="settingsHeading">اتصال و پردازش</h2></div><button id="closeSettings" class="icon-button" type="button" aria-label="بستن">×</button></div>
+      <div class="speech-settings">
+        <label class="field-label" for="speechSpeedRange">سرعت و ضرب‌آهنگ</label>
+        <div class="tempo-row"><span>آرام</span><input id="speechSpeedRange" class="tempo-range" type="range" min="0.9" max="1.1" step="0.05" value="1" aria-label="سرعت گفتار"><span>تند</span><b id="speechSpeedValue">۱٫۰۰×</b></div>
+        <span class="field-label rhythm-label">ریتم</span>
+        <div class="tone-grid settings-tone-grid" role="group" aria-label="انتخاب ریتم گفتار">
+          <button class="tone-chip active" type="button" data-tone="normal" aria-pressed="true">عادی</button>
+          <button class="tone-chip" type="button" data-tone="formal" aria-pressed="false">رسمی</button>
+          <button class="tone-chip" type="button" data-tone="news" aria-pressed="false">خبری</button>
+          <button class="tone-chip" type="button" data-tone="cheerful" aria-pressed="false">شاد</button>
+          <button class="tone-chip" type="button" data-tone="intimate" aria-pressed="false">صمیمی</button>
+        </div>
+      </div>
       <label class="field-label" for="gatewayUrl">آدرس سرور آنلاین</label>
       <input id="gatewayUrl" class="text-field" type="url" inputmode="url" autocomplete="url" placeholder="https://your-server.example">
       <label class="online-toggle" for="onlineToggle"><span><b>استفاده از سرور آنلاین</b></span><input id="onlineToggle" type="checkbox"><span class="toggle-track" aria-hidden="true"></span></label>

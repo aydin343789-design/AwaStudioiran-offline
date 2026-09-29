@@ -75,6 +75,7 @@ button:disabled { cursor: not-allowed; }
 .voice-card.active .voice-caption { color: var(--gold-bright); }
 .voice-card.unavailable .voice-caption { color: #c0a86e; }
 .selected-mark { position: absolute; top: 9px; left: 9px; display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid rgba(239,214,154,.55); border-radius: 50%; color: var(--gold-bright); font-size: 11px; }
+.voice-card:not(.active) .selected-mark { display: none; }
 
 .tone-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .tone-chip { min-width: 65px; padding: 9px 13px; border: 1px solid var(--line-cool); border-radius: 999px; background: rgba(19,29,46,.72); color: var(--text-soft); cursor: pointer; font-size: 12px; font-weight: 600; transition: background .16s ease, border-color .16s ease, color .16s ease; }
@@ -135,6 +136,13 @@ button:disabled { cursor: not-allowed; }
 .sheet-handle { width: 38px; height: 4px; margin: 0 auto 17px; border-radius: 4px; background: rgba(208,219,235,.26); }
 .sheet-heading { align-items: center; margin-bottom: 18px; }
 .field-label { display: block; margin-bottom: 8px; color: var(--text-soft); font-size: 12px; font-weight: 600; }
+.speech-settings { margin: 0 0 18px; padding: 14px; border: 1px solid var(--line-cool); border-radius: 16px; background: rgba(255,255,255,.025); }
+.tempo-row { display: grid; grid-template-columns: auto minmax(70px,1fr) auto auto; align-items: center; gap: 9px; margin: 2px 0 15px; color: var(--muted); font-size: 10px; }
+.tempo-range { width: 100%; accent-color: var(--gold); direction: ltr; }
+.tempo-row b { min-width: 42px; color: var(--gold-bright); font-size: 11px; text-align: left; }
+.rhythm-label { margin: 0 0 8px; }
+.settings-tone-grid { gap: 6px; }
+.settings-tone-grid .tone-chip { min-width: 0; flex: 1 1 auto; padding: 8px 10px; font-size: 11px; }
 .text-field { width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--line-cool); border-radius: 12px; background: rgba(5,11,20,.52); color: var(--text); direction: ltr; text-align: left; }
 .text-field::placeholder { color: #8390a6; opacity: 1; }
 .online-toggle { position: relative; display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0 15px; padding: 10px 12px; border: 1px solid var(--line-cool); border-radius: 14px; background: rgba(255,255,255,.025); cursor: pointer; }

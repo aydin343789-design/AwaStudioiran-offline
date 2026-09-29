@@ -1,6 +1,6 @@
 {
   "name": "avaye-iran-azad",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "description": "Offline Persian TTS studio with local Piper WebAssembly, tempo presets, and MP3 export.",
   "scripts": {

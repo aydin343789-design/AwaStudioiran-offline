@@ -1,6 +1,17 @@
-import { TtsSession, stored } from "@mintplex-labs/piper-tts-web";
+import { PATH_MAP, TtsSession, stored } from "@mintplex-labs/piper-tts-web";
 
 export const PERSIAN_VOICE_ID = "fa_IR-amir-medium";
+export const PERSIAN_WOMAN_VOICE_ID = "fa_IR-mana-medium";
+export const PERSIAN_VOICES = {
+  male: { id: PERSIAN_VOICE_ID, label: "امیر · مردانه" },
+  female: { id: PERSIAN_WOMAN_VOICE_ID, label: "مانا · زنانه" }
+};
+
+// Piper Web normally resolves models from its fixed diffusionstudio mirror.
+// This pinned library builds URLs from HF_BASE + PATH_MAP[id]; the relative path
+// resolves to the model author's public Hugging Face repo and keeps its OPFS cache.
+PATH_MAP[PERSIAN_WOMAN_VOICE_ID] = "../../../../MahtaFetrat/Mana-Persian-Piper/resolve/main/fa_IR-mana-medium.onnx";
+
 const RUNTIME_ASSETS = [
   {
     key: "ort-wasm-simd.wasm",
@@ -36,6 +47,7 @@ const DB_STORE = "assets";
 let dbPromise;
 let objectUrls = {};
 let sessionPromise;
+let sessionVoiceId;
 
 function openDb() {
   if (dbPromise) return dbPromise;
@@ -121,50 +133,67 @@ function assertLocalStorageSupport() {
   }
 }
 
-export async function modelIsDownloaded() {
+function assertVoiceId(voiceId) {
+  if (!Object.values(PERSIAN_VOICES).some((voice) => voice.id === voiceId)) {
+    throw new Error("مدل صدای انتخاب‌شده پشتیبانی نمی‌شود.");
+  }
+}
+
+export async function modelIsDownloaded(voiceId = PERSIAN_VOICE_ID) {
   assertLocalStorageSupport();
+  assertVoiceId(voiceId);
   try {
-    return (await stored()).includes(PERSIAN_VOICE_ID);
+    return (await stored()).includes(voiceId);
   } catch (_) {
     return false;
   }
 }
 
-export async function preparePersianVoice(onProgress) {
+export async function preparePersianVoice(voiceId = PERSIAN_VOICE_ID, onProgress) {
   assertLocalStorageSupport();
-  if (sessionPromise) return sessionPromise;
-  sessionPromise = (async () => {
-    try { await navigator.storage.persist?.(); } catch (_) {}
-    const [ortWasm, piperWasm, piperData] = await Promise.all(
-      RUNTIME_ASSETS.map((asset) => loadAsset(asset, onProgress))
-    );
-    onProgress?.({ phase: "model", loaded: 0, total: 0, asset: "مدل صدای فارسی (حدود ۶۴ مگابایت)" });
-    const wasmPaths = {
-      // Modern Android WebView supports WebAssembly SIMD. Keep the generic key mapped as well
-      // for runtimes that select the non-SIMD binary name.
-      onnxWasm: {
-        "ort-wasm-simd.wasm": ortWasm,
-        "ort-wasm.wasm": ortWasm
-      },
-      piperWasm,
-      piperData
-    };
-    const session = await TtsSession.create({
-      voiceId: PERSIAN_VOICE_ID,
-      wasmPaths,
-      progress: (progress) => onProgress?.({ ...progress, phase: "model", asset: "مدل صدای فارسی" })
-    });
-    onProgress?.({ phase: "ready", loaded: 1, total: 1 });
-    return session;
-  })().catch((error) => {
+  assertVoiceId(voiceId);
+  if (sessionPromise && sessionVoiceId === voiceId) return sessionPromise;
+  if (sessionVoiceId !== voiceId) {
     sessionPromise = null;
     try { TtsSession._instance = null; } catch (_) {}
-    throw error;
-  });
+  }
+  sessionVoiceId = voiceId;
+  const voice = Object.values(PERSIAN_VOICES).find((item) => item.id === voiceId);
+  sessionPromise = (async () => {
+    try {
+      try { await navigator.storage.persist?.(); } catch (_) {}
+      const [ortWasm, piperWasm, piperData] = await Promise.all(
+        RUNTIME_ASSETS.map((asset) => loadAsset(asset, onProgress))
+      );
+      onProgress?.({ phase: "model", loaded: 0, total: 0, asset: `مدل ${voice.label} (حدود ۶۴ مگابایت)` });
+      const wasmPaths = {
+        onnxWasm: {
+          "ort-wasm-simd.wasm": ortWasm,
+          "ort-wasm.wasm": ortWasm
+        },
+        piperWasm,
+        piperData
+      };
+      const session = await TtsSession.create({
+        voiceId,
+        wasmPaths,
+        progress: (progress) => onProgress?.({ ...progress, phase: "model", asset: `مدل ${voice.label}` })
+      });
+      onProgress?.({ phase: "ready", loaded: 1, total: 1, asset: voice.label });
+      return session;
+    } catch (error) {
+      if (sessionVoiceId === voiceId) {
+        sessionPromise = null;
+        sessionVoiceId = null;
+      }
+      try { TtsSession._instance = null; } catch (_) {}
+      throw error;
+    }
+  })();
   return sessionPromise;
 }
 
-export async function synthesizePersian(text, onProgress) {
-  const session = await preparePersianVoice(onProgress);
+export async function synthesizePersian(text, voiceId = PERSIAN_VOICE_ID, onProgress) {
+  const session = await preparePersianVoice(voiceId, onProgress);
   return session.predict(text);
 }
